@@ -92,7 +92,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { DxDiagram, DxToolbox } from 'devextreme-vue/diagram'
-import type { RequestEditOperationEvent, DiagramCustomShapeRenderEvent } from 'devextreme/ui/diagram'
+import type { RequestEditOperationEvent } from 'devextreme/ui/diagram'
 
 // 예제 정의
 const examples = ref([
@@ -457,7 +457,7 @@ const loadDemoData = () => {
     ]
   }
   
-  diagram.import(sampleData)
+  diagram.import(JSON.stringify(sampleData))
   addDemoLog('샘플 데이터가 로드되었습니다.', 'success')
 }
 
@@ -466,12 +466,12 @@ const clearDemoData = () => {
   const diagram = demoDiagramRef.value?.instance
   if (!diagram) return
   
-  diagram.import({
+  diagram.import(JSON.stringify({
     nodeKeyProperty: 'id',
     edgeKeyProperty: 'id',
     nodes: [],
     edges: []
-  })
+  }))
 }
 
 // 데모 로그 추가
@@ -570,20 +570,20 @@ const handlePermissionBased = (e: RequestEditOperationEvent) => {
       break
       
     case 'deleteShape':
-    case 'deleteConnection':
+    case 'deleteConnector':
       e.allowed = permissions.canDelete
-      if (!e.allowed) e.reason = `${currentRole.value}는 삭제할 수 없습니다.`
+      if (!e.allowed) (e as any).reason = `${currentRole.value}는 삭제할 수 없습니다.`
       break
       
     case 'changeShapeText':
     case 'changeConnection':
       e.allowed = permissions.canEdit
-      if (!e.allowed) e.reason = `${currentRole.value}는 편집할 수 없습니다.`
+      if (!e.allowed) (e as any).reason = `${currentRole.value}는 편집할 수 없습니다.`
       break
       
     case 'moveShape':
       e.allowed = permissions.canMove
-      if (!e.allowed) e.reason = `${currentRole.value}는 이동할 수 없습니다.`
+      if (!e.allowed) (e as any).reason = `${currentRole.value}는 이동할 수 없습니다.`
       break
       
     default:
@@ -596,13 +596,13 @@ const handleBusinessRules = (e: RequestEditOperationEvent) => {
   const diagram = demoDiagramRef.value?.instance
   
   switch (e.operation) {
-    case 'addConnection':
-      const connection = e.args.connection
+    case 'changeConnection':
+      const connection = (e.args as any).connection
       
       // 자기 자신으로의 연결 금지
       if (connection.from.id === connection.to.id) {
         e.allowed = false
-        e.reason = '자기 자신으로의 연결은 허용되지 않습니다.'
+        ;(e as any).reason = '자기 자신으로의 연결은 허용되지 않습니다.'
         return
       }
       
@@ -610,26 +610,26 @@ const handleBusinessRules = (e: RequestEditOperationEvent) => {
       const orphanedShapes = diagram ? diagram.getItems()
         .filter(item => item.itemType === 'shape')
         .filter(shape => {
-          const connections = diagram.getConnections()
-            .filter(conn => conn.from === shape.id || conn.to === shape.id)
+          const items = diagram.getItems().filter(item => item.itemType === 'connector')
+          const connections = (items as any).filter((conn: any) => conn.from?.id === shape.id || conn.to?.id === shape.id)
           return connections.length === 0
         }) : []
       
       if (orphanedShapes.length > 0) {
         e.allowed = false
-        e.reason = '연결되지 않은 도형은 허용되지 않습니다.'
+        ;(e as any).reason = '연결되지 않은 도형은 허용되지 않습니다.'
         return
       }
       
       e.allowed = true
       break
       
-    case 'deleteConnection':
+    case 'deleteConnector':
       // 연결 삭제 시 고아 도형 방지
       const shape = e.args.shape
       if (shape) {
-        const connections = diagram ? diagram.getConnections()
-          .filter(conn => conn.from === shape.id || conn.to === shape.id) : []
+        const items = diagram ? diagram.getItems().filter(item => item.itemType === 'connector') : []
+        const connections = items.filter((conn: any) => conn.from?.id === shape.id || conn.to?.id === shape.id)
         
         if (connections.length <= 1) {
           e.allowed = false
@@ -679,7 +679,7 @@ const handleAdvancedValidation = (e: RequestEditOperationEvent) => {
 }
 
 // 커스텀 도형 렌더링
-const demoCustomShapeRender = (e: DiagramCustomShapeRenderEvent) => {
+const demoCustomShapeRender = (e: any) => {
   if (e.shape.type === 'decision') {
     e.contentTemplate = (container: HTMLElement, shape: any) => {
       container.innerHTML = `

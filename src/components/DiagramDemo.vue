@@ -391,7 +391,7 @@ const onContentReady = (e: DiagramContentReadyEvent) => {
   const diagram = e.component
   const items = diagram.getItems()
   shapeCount.value = items.filter(item => item.itemType === 'shape').length
-  connectionCount.value = items.filter(item => item.itemType === 'connection').length
+  connectionCount.value = items.filter(item => item.itemType === 'connector').length
   
   addEventLog({
     operation: 'contentReady',
@@ -446,12 +446,12 @@ const loadInitialData = () => {
     ]
   }
   
-  diagram.import(initialData)
+  diagram.import(JSON.stringify(initialData))
   
   // 카운트 업데이트
   const items = diagram.getItems()
   shapeCount.value = items.filter(item => item.itemType === 'shape').length
-  connectionCount.value = items.filter(item => item.itemType === 'connection').length
+  connectionCount.value = items.filter(item => item.itemType === 'connector').length
 }
 
 // 샘플 데이터 로드

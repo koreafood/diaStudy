@@ -139,8 +139,7 @@ import { ref, computed, nextTick } from 'vue'
 import { DxDiagram, DxToolbox, DxPropertiesPanel } from 'devextreme-vue/diagram'
 import type { 
   RequestEditOperationEvent, 
-  DiagramContentReadyEvent,
-  DiagramCustomShapeRenderEvent
+  ContentReadyEvent
 } from 'devextreme/ui/diagram'
 
 // 상태 관리
@@ -190,7 +189,7 @@ const getOperationPercentage = (count: number) => {
 }
 
 // 커스텀 도형 렌더링
-const customShapeRender = (e: DiagramCustomShapeRenderEvent) => {
+const customShapeRender = (e: any) => {
   // 기본 렌더링 사용
 }
 
@@ -212,7 +211,7 @@ const generateCacheKey = (operation: string, args: any): string => {
 }
 
 // 캐시에서 결과 조회
-const getCachedResult = (key: string): { result: boolean; reason?: string } | null => {
+const getCachedResult = (key: string): { allowed: boolean; reason?: string } | null => {
   const cached = validationCache.get(key)
   if (!cached) return null
   
@@ -222,7 +221,7 @@ const getCachedResult = (key: string): { result: boolean; reason?: string } | nu
     return null
   }
   
-  return { result: cached.result }
+  return { allowed: cached.result }
 }
 
 // 캐시에 결과 저장
@@ -241,8 +240,8 @@ const cacheResult = (key: string, result: boolean) => {
 
 // 고성능 유효성 검사
 const performFastValidation = (e: RequestEditOperationEvent): { allowed: boolean; reason?: string } => {
-  const operation = e.operation
-  const args = e.args
+  const operation = e.operation as string
+  const args = e.args as any
   
   // 빠른 캐시 조회
   if (optimizationEnabled.value) {
@@ -285,7 +284,7 @@ const performFastValidation = (e: RequestEditOperationEvent): { allowed: boolean
       }
       break
       
-    case 'addConnection':
+    case 'changeConnection':
       // 빠른 자기 연결 검사
       if (args.connection?.from?.id === args.connection?.to?.id) {
         allowed = false
@@ -313,7 +312,7 @@ const onRequestEditOperation = (e: RequestEditOperationEvent) => {
     
     // 결과 적용
     e.allowed = result.allowed
-    e.reason = result.reason
+    ;(e as any).reason = result.reason
     
     // 메트릭 업데이트
     updateMetrics(e.operation, result.allowed, startTime)
@@ -324,7 +323,7 @@ const onRequestEditOperation = (e: RequestEditOperationEvent) => {
   } catch (error) {
     console.error('편집 작업 오류:', error)
     e.allowed = false
-    e.reason = '처리 중 오류 발생'
+    ;(e as any).reason = '처리 중 오류 발생'
   }
 }
 
@@ -413,12 +412,12 @@ const loadLargeDataset = () => {
     edges
   }
   
-  diagram.import(largeDataset)
+  diagram.import(JSON.stringify(largeDataset))
   
   // 카운트 업데이트
   const items = diagram.getItems()
   shapeCount.value = items.filter(item => item.itemType === 'shape').length
-  connectionCount.value = items.filter(item => item.itemType === 'connection').length
+  connectionCount.value = items.filter(item => item.itemType === 'connector').length
   
   addRecentOperation('loadLargeDataset', true, performance.now())
 }
@@ -428,12 +427,12 @@ const clearData = () => {
   const diagram = diagramRef.value?.instance
   if (!diagram) return
   
-  diagram.import({
+  diagram.import(JSON.stringify({
     nodeKeyProperty: 'id',
     edgeKeyProperty: 'id',
     nodes: [],
     edges: []
-  })
+  }))
   
   shapeCount.value = 0
   connectionCount.value = 0
@@ -479,11 +478,11 @@ const toggleOptimization = () => {
 }
 
 // 컨텐츠 준비 완료
-const onContentReady = (e: DiagramContentReadyEvent) => {
+const onContentReady = (e: ContentReadyEvent) => {
   const diagram = e.component
   const items = diagram.getItems()
   shapeCount.value = items.filter(item => item.itemType === 'shape').length
-  connectionCount.value = items.filter(item => item.itemType === 'connection').length
+  connectionCount.value = items.filter(item => item.itemType === 'connector').length
 }
 </script>
 
