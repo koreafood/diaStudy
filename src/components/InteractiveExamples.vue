@@ -383,6 +383,45 @@ function cacheResult(key: string, result: { result: boolean; reason?: string }) 
     timestamp: Date.now()
   });
 }`
+  },
+  {
+    id: 'rectangle-container-rule',
+    name: '사각형 전용 컨테이너 규칙',
+    description: '사각형은 컨테이너에만 등록 가능하며, 컨테이너에는 사각형만 등록 가능한 규칙을 적용합니다.',
+    features: [
+      '사각형 캔버스 직접 등록 제한',
+      '컨테이너에 사각형 외 도형 등록 제한'
+    ],
+    tips: [
+      '사각형을 캔버스에 드롭해보세요 (실패)',
+      '수직/수평 컨테이너를 먼저 추가하세요',
+      '컨테이너에 사각형을 드롭해보세요 (성공)',
+      '컨테이너에 다른 도형을 드롭해보세요 (실패)'
+    ],
+    code: `const onRequestEditOperation = (e: RequestEditOperationEvent) => {
+  if (e.operation === 'addShape') {
+    const shapeType = e.args.shape.type;
+    const container = e.args.container;
+
+    // 1. 다이어그램 캔버스에 rectangle 직접 등록 불가
+    if (shapeType === 'rectangle' && !container) {
+      e.allowed = false;
+      e.reason = '사각형은 캔버스 직접 등록 불가능합니다';
+      return;
+    }
+
+    // 2. verticalContainer, horizontalContainer 에는 rectangle 만 등록가능
+    if (container && (container.type === 'verticalContainer' || container.type === 'horizontalContainer')) {
+      if (shapeType !== 'rectangle') {
+        e.allowed = false;
+        e.reason = '사각형 형태만 등록 가능합니다';
+        return;
+      }
+    }
+    
+    e.allowed = true;
+  }
+};`
   }
 ])
 
@@ -502,6 +541,9 @@ const onDemoRequestEditOperation = (e: RequestEditOperationEvent) => {
         break
       case 'advanced-validation':
         handleAdvancedValidation(e)
+        break
+      case 'rectangle-container-rule':
+        handleRectangleContainerRule(e)
         break
       default:
         e.allowed = true
@@ -675,6 +717,111 @@ const handleAdvancedValidation = (e: RequestEditOperationEvent) => {
       
     default:
       e.allowed = true
+  }
+}
+
+// 좌표가 사각형 안에 있는지 확인하는 헬퍼 함수
+function isPointInRect(point: { x: number, y: number }, rect: any): boolean {
+  const x = rect.x ?? rect.position?.x ?? 0
+  const y = rect.y ?? rect.position?.y ?? 0
+  // 컨테이너의 경우 크기 정보가 없으면 기본값(300x200)을 가정하여 처리
+  const width = rect.width ?? rect.size?.width ?? 300
+  const height = rect.height ?? rect.size?.height ?? 200
+  
+  return point.x >= x && 
+         point.x <= x + width && 
+         point.y >= y && 
+         point.y <= y + height
+}
+
+// 사각형 전용 컨테이너 규칙 처리
+const handleRectangleContainerRule = (e: RequestEditOperationEvent) => {
+  const isAdd = e.operation === 'addShape'
+  const isMove = e.operation === 'moveShape'
+
+  if (isAdd || isMove) {
+    const args = e.args as any
+    const shape = args.shape
+    // shape 정보가 없으면 처리 중단 (안전장치)
+    if (!shape) return
+
+    const shapeType = (shape.type || '').toLowerCase()
+    
+    // 대상 위치 좌표 가져오기
+    // addShape: args.position
+    // moveShape: args.newPosition
+    const targetPosition = isAdd ? args.position : args.newPosition
+    
+    console.log(`[Rule Check] Operation: ${e.operation}, Shape: ${shapeType}`)
+    if (targetPosition) {
+      console.log(`[Rule Check] Target Position: x=${targetPosition.x}, y=${targetPosition.y}`)
+    }
+
+    // 컨테이너 판별
+    let container = isAdd ? args.container : null
+    if (container) {
+      console.log(`[Rule Check] DX Provided Container: ${container.type} (ID: ${container.id})`)
+    }
+
+    // container 정보가 없으면 좌표를 기반으로 찾기 (moveShape는 container 정보가 원래 없음)
+    if (!container && targetPosition) {
+      const diagram = demoDiagramRef.value?.instance
+      if (diagram) {
+        const items = diagram.getItems()
+        // z-index 고려하여 역순 검색 (나중에 그려진 것이 위에 있음)
+        container = [...items].reverse().find(item => {
+          const itemType = (item.itemType || '').toLowerCase()
+          const type = ((item as any).type || '').toLowerCase()
+          // 자기 자신은 제외 (moveShape 시)
+          if (item.id === shape.id) return false
+          
+          const isContainer = itemType === 'shape' && (type === 'verticalcontainer' || type === 'horizontalcontainer')
+          if (!isContainer) return false
+
+          const inRect = isPointInRect(targetPosition, item)
+          if (inRect) {
+            console.log(`[Rule Check] Manual Container Detected: ${type} (ID: ${item.id})`)
+          }
+          return inRect
+        })
+      }
+    }
+
+    if (!container) {
+      console.log('[Rule Check] No Container Detected (Target is Canvas)')
+    }
+
+    // 1. 다이어그램 캔버스에 rectangle 직접 등록 불가
+    // 조건: 컨테이너가 없고, 도형이 사각형일 때
+    // 단, 컨테이너 자체는 캔버스에 등록 가능해야 함
+    const isContainerShape = shapeType === 'verticalcontainer' || shapeType === 'horizontalcontainer'
+    
+    if (shapeType === 'rectangle' && !container) {
+      console.log('[Rule Check] Blocked: Rectangle on Canvas')
+      e.allowed = false
+      ;(e as any).reason = '사각형은 캔버스 직접 등록 불가능합니다'
+      return
+    }
+
+    // 2. verticalContainer, horizontalContainer 에는 rectangle 만 등록가능
+    // 조건: 컨테이너가 감지되었을 때
+    if (container) {
+      const containerType = ((container as any).type || '').toLowerCase()
+      if (containerType === 'verticalcontainer' || containerType === 'horizontalcontainer') {
+        // 사각형이 아니면 차단
+        if (shapeType !== 'rectangle') {
+          console.log(`[Rule Check] Blocked: Non-Rectangle (${shapeType}) in Container`)
+          e.allowed = false
+          ;(e as any).reason = '사각형 형태만 등록 가능합니다'
+          return
+        }
+      }
+    }
+    
+    console.log('[Rule Check] Allowed')
+    e.allowed = true
+  } else {
+    e.allowed = true
   }
 }
 
